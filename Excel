@@ -6,7 +6,7 @@ import string
 def excel_col_to_index(letter):
     return string.ascii_uppercase.index(letter.upper())
 
-def load_and_process(sheet_name=0, cell_column='A'):
+def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
@@ -25,8 +25,10 @@ def load_and_process(sheet_name=0, cell_column='A'):
         r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
     )
 
+    # Convert and filter
     split_data["Datetime"] = pd.to_datetime(split_data["Date"] + " " + split_data["Time"])
-    split_data["PH"] = split_data["PH"].astype(float)
+    split_data["PH"] = pd.to_numeric(split_data["PH"], errors='coerce')
+    split_data = split_data[split_data["Datetime"] >= pd.to_datetime(start_date)]
     split_data.sort_values("Datetime", inplace=True)
     split_data.reset_index(drop=True, inplace=True)
 
@@ -35,7 +37,7 @@ def load_and_process(sheet_name=0, cell_column='A'):
 def find_largest_ph_drops(df, top_n=5):
     df["PH_Drop"] = df["PH"].diff()
     drops = df[df["PH_Drop"] < 0].copy()
-    drops["Drop_Size"] = -drops["PH_Drop"]  # Make it positive for reporting
+    drops["Drop_Size"] = -drops["PH_Drop"]
     drops["Previous Time"] = df["Datetime"].shift(1)
     drops["Previous PH"] = df["PH"].shift(1)
 
@@ -67,7 +69,9 @@ def save_report(report_df):
         print(report_df)
 
 if __name__ == "__main__":
-    df = load_and_process(cell_column='A')
-    if df is not None:
+    df = load_and_process(cell_column='A', start_date='2025-02-21')
+    if df is not None and not df.empty:
         report_df = find_largest_ph_drops(df, top_n=5)
         save_report(report_df)
+    else:
+        print("No valid data found after Feb 21.")
