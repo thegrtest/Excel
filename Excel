@@ -1,16 +1,12 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import filedialog
 import string
 
-# --- Column letter to index ---
 def excel_col_to_index(letter):
     return string.ascii_uppercase.index(letter.upper())
 
-# --- Load and process data ---
-def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
-    # File dialog
+def load_and_process(sheet_name=0, cell_column='A'):
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
@@ -21,67 +17,57 @@ def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
         print("No file selected.")
         return None
 
-    # Load Excel
     df = pd.read_excel(file_path, sheet_name=sheet_name)
     column_index = excel_col_to_index(cell_column)
     data_series = df.iloc[:, column_index]
 
-    # Extract data
     split_data = data_series.str.extract(
         r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
     )
 
-    # Parse datetime and convert types
     split_data["Datetime"] = pd.to_datetime(split_data["Date"] + " " + split_data["Time"])
     split_data["PH"] = split_data["PH"].astype(float)
+    split_data.sort_values("Datetime", inplace=True)
+    split_data.reset_index(drop=True, inplace=True)
 
-    # Filter by start date
-    filtered_data = split_data[split_data["Datetime"] >= pd.to_datetime(start_date)]
+    return split_data
 
-    return filtered_data
+def find_largest_ph_drops(df, top_n=5):
+    df["PH_Drop"] = df["PH"].diff()
+    drops = df[df["PH_Drop"] < 0].copy()
+    drops["Drop_Size"] = -drops["PH_Drop"]  # Make it positive for reporting
+    drops["Previous Time"] = df["Datetime"].shift(1)
+    drops["Previous PH"] = df["PH"].shift(1)
 
-# --- Plotting functions ---
-def plot_all_ph(data):
-    plt.figure(figsize=(12, 6))
-    plt.plot(data["Datetime"], data["PH"], marker='o', linestyle='-')
-    plt.title("pH Over Time")
-    plt.xlabel("Datetime")
-    plt.ylabel("pH")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    largest_drops = drops.nlargest(top_n, "Drop_Size")
 
-def plot_weekly_avg(data):
-    data.set_index("Datetime", inplace=True)
-    weekly_avg = data["PH"].resample("W").mean()
+    report = largest_drops[[
+        "Previous Time", "Previous PH", "Datetime", "PH", "Drop_Size"
+    ]].rename(columns={
+        "Previous Time": "From Time",
+        "Previous PH": "From pH",
+        "Datetime": "To Time",
+        "PH": "To pH",
+        "Drop_Size": "pH Drop"
+    })
 
-    plt.figure(figsize=(10, 5))
-    weekly_avg.plot(marker='o')
-    plt.title("Weekly Average pH")
-    plt.xlabel("Week")
-    plt.ylabel("Average pH")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    return report
 
-def plot_daily_avg(data):
-    daily_avg = data.groupby(data["Datetime"].dt.date)["PH"].mean()
-
-    plt.figure(figsize=(10, 5))
-    daily_avg.plot(marker='o')
-    plt.title("Daily Average pH")
-    plt.xlabel("Date")
-    plt.ylabel("Average pH")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-# --- Main ---
-if __name__ == "__main__":
-    data = load_and_process(cell_column='A')  # adjust if needed
-    if data is not None and not data.empty:
-        plot_all_ph(data)
-        plot_daily_avg(data)
-        plot_weekly_avg(data)
+def save_report(report_df):
+    output_path = filedialog.asksaveasfilename(
+        title="Save Report As",
+        defaultextension=".xlsx",
+        filetypes=[("Excel Files", "*.xlsx")]
+    )
+    if output_path:
+        report_df.to_excel(output_path, index=False)
+        print(f"Report saved to: {output_path}")
     else:
-        print("No data to plot.")
+        print("No output file selected. Showing result:")
+        print(report_df)
+
+if __name__ == "__main__":
+    df = load_and_process(cell_column='A')
+    if df is not None:
+        report_df = find_largest_ph_drops(df, top_n=5)
+        save_report(report_df)
