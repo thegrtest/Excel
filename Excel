@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import tkinter as tk
 from tkinter import filedialog
 import string
@@ -36,20 +37,34 @@ def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
 
     return split_data
 
-def plot_ph_time_series(data):
-    plt.figure(figsize=(12, 6))
-    plt.plot(data["Datetime"], data["PH"], marker='o', linestyle='-', markersize=4)
-    plt.title("pH Measurements Over Time (from Feb 21st)")
-    plt.xlabel("Timestamp")
-    plt.ylabel("pH Level")
-    plt.grid(True)
+def plot_ph_time_series_with_labels(data):
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(data["Datetime"], data["PH"], marker='o', linestyle='-', markersize=4, label="pH")
+
+    # Draw green line at pH = 7
+    ax.axhline(y=7.0, color='green', linestyle='--', linewidth=1.5, label="Neutral pH (7.0)")
+
+    # Vertical lines for each new day
+    unique_days = pd.to_datetime(data["Datetime"].dt.date.unique())
+    for day in unique_days:
+        ax.axvline(x=day, color='gray', linestyle=':', linewidth=0.8)
+
+    # Set x-axis format
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d\n%H:%M'))
+    ax.set_xticks(data["Datetime"])
     plt.xticks(rotation=45)
+
+    ax.set_title("pH Measurements Over Time (From Feb 21st)")
+    ax.set_xlabel("Date and Time")
+    ax.set_ylabel("pH Level")
+    ax.grid(True)
+    ax.legend()
     plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
     df = load_and_process(cell_column='A', start_date='2025-02-21')
     if df is not None and not df.empty:
-        plot_ph_time_series(df)
+        plot_ph_time_series_with_labels(df)
     else:
         print("No valid pH data found after Feb 21.")
