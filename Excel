@@ -6,12 +6,13 @@ from tkinter import filedialog
 import string
 import datetime
 
-# Convert Excel-style column letter to index
+# Converts Excel-style column letter (e.g. 'A') to zero-based index
 def excel_col_to_index(letter):
     return string.ascii_uppercase.index(letter.upper())
 
-# Load Excel and parse data
-def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
+# Load Excel data, clean, extract values, and resample
+def load_and_process(cell_column='A', start_date='2025-02-21'):
+    # File dialog to get Excel file path
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
@@ -22,30 +23,41 @@ def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
         print("No file selected.")
         return None
 
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
-    column_index = excel_col_to_index(cell_column)
-    data_series = df.iloc[:, column_index]
+    try:
+        df = pd.read_excel(file_path)
+    except Exception as e:
+        print(f"Failed to read Excel file: {e}")
+        return None
 
+    # Convert column letter to index and extract data
+    try:
+        column_index = excel_col_to_index(cell_column)
+        data_series = df.iloc[:, column_index]
+    except Exception as e:
+        print(f"Error accessing column '{cell_column}': {e}")
+        return None
+
+    # Extract values using regex
     split_data = data_series.str.extract(
         r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
     )
 
-    split_data["Datetime"] = pd.to_datetime(split_data["Date"] + " " + split_data["Time"])
+    # Convert data types
+    split_data["Datetime"] = pd.to_datetime(split_data["Date"] + " " + split_data["Time"], errors='coerce')
     split_data["PH"] = pd.to_numeric(split_data["PH"], errors='coerce')
 
-    # Filter from Feb 21st
+    # Drop invalid rows and filter from Feb 21st
+    split_data.dropna(subset=["Datetime", "PH"], inplace=True)
     split_data = split_data[split_data["Datetime"] >= pd.to_datetime(start_date)]
     split_data.sort_values("Datetime", inplace=True)
-    split_data.dropna(subset=["PH"], inplace=True)
 
-    # Resample to 6 points/day => every 4 hours
+    # Resample to 6 points per day (every 4 hours)
     split_data.set_index("Datetime", inplace=True)
-    resampled = split_data.resample("4H").mean().dropna()
-    resampled.reset_index(inplace=True)
+    resampled = split_data.resample("4H").mean().dropna().reset_index()
 
     return resampled
 
-# Plot a single week's worth of data
+# Plot a single week's data
 def plot_weekly_data(data, week_start, week_end):
     weekly_data = data[(data["Datetime"] >= week_start) & (data["Datetime"] < week_end)]
     if weekly_data.empty:
@@ -57,12 +69,11 @@ def plot_weekly_data(data, week_start, week_end):
     # Green line at pH 7
     ax.axhline(y=7.0, color='green', linestyle='--', linewidth=1.5, label="Neutral pH (7.0)")
 
-    # Vertical lines for day changes
-    unique_days = pd.to_datetime(weekly_data["Datetime"].dt.date.unique())
-    for day in unique_days:
+    # Day dividers
+    for day in pd.to_datetime(weekly_data["Datetime"].dt.date.unique()):
         ax.axvline(x=day, color='gray', linestyle=':', linewidth=0.8)
 
-    # Vertical timestamp labels, small font
+    # X-axis label formatting
     ax.set_xticks(weekly_data["Datetime"])
     ax.set_xticklabels(
         [dt.strftime('%Y-%m-%d\n%H:%M') for dt in weekly_data["Datetime"]],
@@ -78,7 +89,7 @@ def plot_weekly_data(data, week_start, week_end):
     plt.tight_layout()
     plt.show()
 
-# Main loop for weekly plotting
+# Loop through data week by week
 def plot_all_weeks(data, start_date='2025-02-21'):
     start = pd.to_datetime(start_date)
     end = data["Datetime"].max()
@@ -88,7 +99,7 @@ def plot_all_weeks(data, start_date='2025-02-21'):
         plot_weekly_data(data, start, week_end)
         start = week_end
 
-# Run script
+# Run it
 if __name__ == "__main__":
     df = load_and_process(cell_column='A', start_date='2025-02-21')
     if df is not None and not df.empty:
