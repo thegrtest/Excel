@@ -4,12 +4,13 @@ import matplotlib.dates as mdates
 import tkinter as tk
 from tkinter import filedialog
 import string
+import datetime
 
-# Convert Excel column letter to index
+# Convert Excel-style column letter to index
 def excel_col_to_index(letter):
     return string.ascii_uppercase.index(letter.upper())
 
-# Load Excel and parse pH/time data
+# Load Excel and parse data
 def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
     root = tk.Tk()
     root.withdraw()
@@ -25,7 +26,6 @@ def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
     column_index = excel_col_to_index(cell_column)
     data_series = df.iloc[:, column_index]
 
-    # Extract date, time, pH, and temp
     split_data = data_series.str.extract(
         r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
     )
@@ -40,28 +40,32 @@ def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
 
     return split_data
 
-# Plot with vertical labels and reference lines
-def plot_ph_time_series_with_labels(data):
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(data["Datetime"], data["PH"], marker='o', linestyle='-', markersize=4, label="pH")
+# Plot a single week's worth of data
+def plot_weekly_data(data, week_start, week_end):
+    weekly_data = data[(data["Datetime"] >= week_start) & (data["Datetime"] < week_end)]
+    if weekly_data.empty:
+        return
 
-    # Green horizontal line at pH = 7
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(weekly_data["Datetime"], weekly_data["PH"], marker='o', linestyle='-', markersize=4, label="pH")
+
+    # Green line at pH 7
     ax.axhline(y=7.0, color='green', linestyle='--', linewidth=1.5, label="Neutral pH (7.0)")
 
-    # Vertical lines for each day change
-    unique_days = pd.to_datetime(data["Datetime"].dt.date.unique())
+    # Vertical lines for day changes
+    unique_days = pd.to_datetime(weekly_data["Datetime"].dt.date.unique())
     for day in unique_days:
         ax.axvline(x=day, color='gray', linestyle=':', linewidth=0.8)
 
     # Apply all timestamps as x-ticks with vertical small font
-    ax.set_xticks(data["Datetime"])
+    ax.set_xticks(weekly_data["Datetime"])
     ax.set_xticklabels(
-        [dt.strftime('%Y-%m-%d\n%H:%M') for dt in data["Datetime"]],
+        [dt.strftime('%Y-%m-%d\n%H:%M') for dt in weekly_data["Datetime"]],
         rotation=90,
         fontsize=7
     )
 
-    ax.set_title("pH Measurements Over Time (From Feb 21st)")
+    ax.set_title(f"pH Over Time: {week_start.date()} to {week_end.date() - datetime.timedelta(days=1)}")
     ax.set_xlabel("Date and Time")
     ax.set_ylabel("pH Level")
     ax.grid(True)
@@ -69,10 +73,20 @@ def plot_ph_time_series_with_labels(data):
     plt.tight_layout()
     plt.show()
 
-# Run the script
+# Main function to iterate by week
+def plot_all_weeks(data, start_date='2025-02-21'):
+    start = pd.to_datetime(start_date)
+    end = data["Datetime"].max()
+
+    while start < end:
+        week_end = start + pd.Timedelta(days=7)
+        plot_weekly_data(data, start, week_end)
+        start = week_end
+
+# Entry point
 if __name__ == "__main__":
     df = load_and_process(cell_column='A', start_date='2025-02-21')
     if df is not None and not df.empty:
-        plot_ph_time_series_with_labels(df)
+        plot_all_weeks(df, start_date='2025-02-21')
     else:
         print("No valid pH data found after Feb 21.")
