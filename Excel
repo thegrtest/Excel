@@ -1,6 +1,20 @@
 import pandas as pd
+import tkinter as tk
+from tkinter import filedialog
 
-def split_excel_data(file_path, sheet_name=0, cell_column='A'):
+def split_excel_data(sheet_name=0, cell_column='A'):
+    # Open file dialog
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    file_path = filedialog.askopenfilename(
+        title="Select Excel File",
+        filetypes=[("Excel Files", "*.xlsx *.xls")]
+    )
+
+    if not file_path:
+        print("No file selected.")
+        return None
+
     # Load the Excel file
     df = pd.read_excel(file_path, sheet_name=sheet_name)
 
@@ -9,9 +23,29 @@ def split_excel_data(file_path, sheet_name=0, cell_column='A'):
         raise ValueError(f"Column '{cell_column}' not found in Excel file.")
 
     # Split the single column into date, time, pH, and temperature
-    split_data = df[cell_column].str.extract(r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)')
+    split_data = df[cell_column].str.extract(
+        r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
+    )
 
-    # Concatenate with original DataFrame if needed
+    # Concatenate with original DataFrame
     result_df = pd.concat([df, split_data], axis=1)
 
+    # Optionally save to a new Excel file
+    output_path = filedialog.asksaveasfilename(
+        title="Save Output As",
+        defaultextension=".xlsx",
+        filetypes=[("Excel Files", "*.xlsx")]
+    )
+
+    if output_path:
+        result_df.to_excel(output_path, index=False)
+        print(f"Split data saved to: {output_path}")
+    else:
+        print("No output file selected. Displaying results only.")
+        print(result_df)
+
     return result_df
+
+# Run the function
+if __name__ == "__main__":
+    split_excel_data()
