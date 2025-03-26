@@ -1,51 +1,87 @@
 import pandas as pd
+import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import filedialog
+import string
 
-def split_excel_data(sheet_name=0, cell_column='A'):
-    # Open file dialog
+# --- Column letter to index ---
+def excel_col_to_index(letter):
+    return string.ascii_uppercase.index(letter.upper())
+
+# --- Load and process data ---
+def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
+    # File dialog
     root = tk.Tk()
-    root.withdraw()  # Hide the main window
+    root.withdraw()
     file_path = filedialog.askopenfilename(
         title="Select Excel File",
         filetypes=[("Excel Files", "*.xlsx *.xls")]
     )
-
     if not file_path:
         print("No file selected.")
         return None
 
-    # Load the Excel file
+    # Load Excel
     df = pd.read_excel(file_path, sheet_name=sheet_name)
+    column_index = excel_col_to_index(cell_column)
+    data_series = df.iloc[:, column_index]
 
-    # Ensure the column exists
-    if cell_column not in df.columns:
-        raise ValueError(f"Column '{cell_column}' not found in Excel file.")
-
-    # Split the single column into date, time, pH, and temperature
-    split_data = df[cell_column].str.extract(
+    # Extract data
+    split_data = data_series.str.extract(
         r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
     )
 
-    # Concatenate with original DataFrame
-    result_df = pd.concat([df, split_data], axis=1)
+    # Parse datetime and convert types
+    split_data["Datetime"] = pd.to_datetime(split_data["Date"] + " " + split_data["Time"])
+    split_data["PH"] = split_data["PH"].astype(float)
 
-    # Optionally save to a new Excel file
-    output_path = filedialog.asksaveasfilename(
-        title="Save Output As",
-        defaultextension=".xlsx",
-        filetypes=[("Excel Files", "*.xlsx")]
-    )
+    # Filter by start date
+    filtered_data = split_data[split_data["Datetime"] >= pd.to_datetime(start_date)]
 
-    if output_path:
-        result_df.to_excel(output_path, index=False)
-        print(f"Split data saved to: {output_path}")
-    else:
-        print("No output file selected. Displaying results only.")
-        print(result_df)
+    return filtered_data
 
-    return result_df
+# --- Plotting functions ---
+def plot_all_ph(data):
+    plt.figure(figsize=(12, 6))
+    plt.plot(data["Datetime"], data["PH"], marker='o', linestyle='-')
+    plt.title("pH Over Time")
+    plt.xlabel("Datetime")
+    plt.ylabel("pH")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
-# Run the function
+def plot_weekly_avg(data):
+    data.set_index("Datetime", inplace=True)
+    weekly_avg = data["PH"].resample("W").mean()
+
+    plt.figure(figsize=(10, 5))
+    weekly_avg.plot(marker='o')
+    plt.title("Weekly Average pH")
+    plt.xlabel("Week")
+    plt.ylabel("Average pH")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def plot_daily_avg(data):
+    daily_avg = data.groupby(data["Datetime"].dt.date)["PH"].mean()
+
+    plt.figure(figsize=(10, 5))
+    daily_avg.plot(marker='o')
+    plt.title("Daily Average pH")
+    plt.xlabel("Date")
+    plt.ylabel("Average pH")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+# --- Main ---
 if __name__ == "__main__":
-    split_excel_data()
+    data = load_and_process(cell_column='A')  # adjust if needed
+    if data is not None and not data.empty:
+        plot_all_ph(data)
+        plot_daily_avg(data)
+        plot_weekly_avg(data)
+    else:
+        print("No data to plot.")
