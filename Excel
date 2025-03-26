@@ -38,7 +38,12 @@ def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
     split_data.sort_values("Datetime", inplace=True)
     split_data.dropna(subset=["PH"], inplace=True)
 
-    return split_data
+    # Resample to 6 points/day => every 4 hours
+    split_data.set_index("Datetime", inplace=True)
+    resampled = split_data.resample("4H").mean().dropna()
+    resampled.reset_index(inplace=True)
+
+    return resampled
 
 # Plot a single week's worth of data
 def plot_weekly_data(data, week_start, week_end):
@@ -57,7 +62,7 @@ def plot_weekly_data(data, week_start, week_end):
     for day in unique_days:
         ax.axvline(x=day, color='gray', linestyle=':', linewidth=0.8)
 
-    # Apply all timestamps as x-ticks with vertical small font
+    # Vertical timestamp labels, small font
     ax.set_xticks(weekly_data["Datetime"])
     ax.set_xticklabels(
         [dt.strftime('%Y-%m-%d\n%H:%M') for dt in weekly_data["Datetime"]],
@@ -65,7 +70,7 @@ def plot_weekly_data(data, week_start, week_end):
         fontsize=7
     )
 
-    ax.set_title(f"pH Over Time: {week_start.date()} to {week_end.date() - datetime.timedelta(days=1)}")
+    ax.set_title(f"pH Over Time: {week_start.date()} to {(week_end - datetime.timedelta(days=1)).date()}")
     ax.set_xlabel("Date and Time")
     ax.set_ylabel("pH Level")
     ax.grid(True)
@@ -73,7 +78,7 @@ def plot_weekly_data(data, week_start, week_end):
     plt.tight_layout()
     plt.show()
 
-# Main function to iterate by week
+# Main loop for weekly plotting
 def plot_all_weeks(data, start_date='2025-02-21'):
     start = pd.to_datetime(start_date)
     end = data["Datetime"].max()
@@ -83,7 +88,7 @@ def plot_all_weeks(data, start_date='2025-02-21'):
         plot_weekly_data(data, start, week_end)
         start = week_end
 
-# Entry point
+# Run script
 if __name__ == "__main__":
     df = load_and_process(cell_column='A', start_date='2025-02-21')
     if df is not None and not df.empty:
