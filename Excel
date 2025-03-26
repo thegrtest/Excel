@@ -1,4 +1,5 @@
 import pandas as pd
+import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import filedialog
 import string
@@ -25,53 +26,30 @@ def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
         r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
     )
 
-    # Convert and filter
     split_data["Datetime"] = pd.to_datetime(split_data["Date"] + " " + split_data["Time"])
     split_data["PH"] = pd.to_numeric(split_data["PH"], errors='coerce')
+
+    # Filter from Feb 21st
     split_data = split_data[split_data["Datetime"] >= pd.to_datetime(start_date)]
     split_data.sort_values("Datetime", inplace=True)
-    split_data.reset_index(drop=True, inplace=True)
+    split_data.dropna(subset=["PH"], inplace=True)
 
     return split_data
 
-def find_largest_ph_drops(df, top_n=5):
-    df["PH_Drop"] = df["PH"].diff()
-    drops = df[df["PH_Drop"] < 0].copy()
-    drops["Drop_Size"] = -drops["PH_Drop"]
-    drops["Previous Time"] = df["Datetime"].shift(1)
-    drops["Previous PH"] = df["PH"].shift(1)
-
-    largest_drops = drops.nlargest(top_n, "Drop_Size")
-
-    report = largest_drops[[
-        "Previous Time", "Previous PH", "Datetime", "PH", "Drop_Size"
-    ]].rename(columns={
-        "Previous Time": "From Time",
-        "Previous PH": "From pH",
-        "Datetime": "To Time",
-        "PH": "To pH",
-        "Drop_Size": "pH Drop"
-    })
-
-    return report
-
-def save_report(report_df):
-    output_path = filedialog.asksaveasfilename(
-        title="Save Report As",
-        defaultextension=".xlsx",
-        filetypes=[("Excel Files", "*.xlsx")]
-    )
-    if output_path:
-        report_df.to_excel(output_path, index=False)
-        print(f"Report saved to: {output_path}")
-    else:
-        print("No output file selected. Showing result:")
-        print(report_df)
+def plot_ph_time_series(data):
+    plt.figure(figsize=(12, 6))
+    plt.plot(data["Datetime"], data["PH"], marker='o', linestyle='-', markersize=4)
+    plt.title("pH Measurements Over Time (from Feb 21st)")
+    plt.xlabel("Timestamp")
+    plt.ylabel("pH Level")
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     df = load_and_process(cell_column='A', start_date='2025-02-21')
     if df is not None and not df.empty:
-        report_df = find_largest_ph_drops(df, top_n=5)
-        save_report(report_df)
+        plot_ph_time_series(df)
     else:
-        print("No valid data found after Feb 21.")
+        print("No valid pH data found after Feb 21.")
