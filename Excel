@@ -1,3 +1,46 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import tkinter as tk
+from tkinter import filedialog
+import string
+
+# Convert Excel column letter to index
+def excel_col_to_index(letter):
+    return string.ascii_uppercase.index(letter.upper())
+
+# Load Excel and parse pH/time data
+def load_and_process(sheet_name=0, cell_column='A', start_date='2025-02-21'):
+    root = tk.Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(
+        title="Select Excel File",
+        filetypes=[("Excel Files", "*.xlsx *.xls")]
+    )
+    if not file_path:
+        print("No file selected.")
+        return None
+
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    column_index = excel_col_to_index(cell_column)
+    data_series = df.iloc[:, column_index]
+
+    # Extract date, time, pH, and temp
+    split_data = data_series.str.extract(
+        r'(?P<Date>\d{4}-\d{2}-\d{2}) (?P<Time>\d{2}:\d{2}:\d{2});(?P<PH>[\d.]+);(?P<Temp>[\d.]+)'
+    )
+
+    split_data["Datetime"] = pd.to_datetime(split_data["Date"] + " " + split_data["Time"])
+    split_data["PH"] = pd.to_numeric(split_data["PH"], errors='coerce')
+
+    # Filter from Feb 21st
+    split_data = split_data[split_data["Datetime"] >= pd.to_datetime(start_date)]
+    split_data.sort_values("Datetime", inplace=True)
+    split_data.dropna(subset=["PH"], inplace=True)
+
+    return split_data
+
+# Plot with vertical labels and reference lines
 def plot_ph_time_series_with_labels(data):
     fig, ax = plt.subplots(figsize=(14, 6))
     ax.plot(data["Datetime"], data["PH"], marker='o', linestyle='-', markersize=4, label="pH")
@@ -5,17 +48,17 @@ def plot_ph_time_series_with_labels(data):
     # Green horizontal line at pH = 7
     ax.axhline(y=7.0, color='green', linestyle='--', linewidth=1.5, label="Neutral pH (7.0)")
 
-    # Vertical gray lines for each new day
+    # Vertical lines for each day change
     unique_days = pd.to_datetime(data["Datetime"].dt.date.unique())
     for day in unique_days:
         ax.axvline(x=day, color='gray', linestyle=':', linewidth=0.8)
 
-    # Set all timestamps as x-axis labels
+    # Apply all timestamps as x-ticks with vertical small font
     ax.set_xticks(data["Datetime"])
     ax.set_xticklabels(
         [dt.strftime('%Y-%m-%d\n%H:%M') for dt in data["Datetime"]],
-        rotation=90,  # Vertical text
-        fontsize=7    # Smaller font
+        rotation=90,
+        fontsize=7
     )
 
     ax.set_title("pH Measurements Over Time (From Feb 21st)")
@@ -25,3 +68,11 @@ def plot_ph_time_series_with_labels(data):
     ax.legend()
     plt.tight_layout()
     plt.show()
+
+# Run the script
+if __name__ == "__main__":
+    df = load_and_process(cell_column='A', start_date='2025-02-21')
+    if df is not None and not df.empty:
+        plot_ph_time_series_with_labels(df)
+    else:
+        print("No valid pH data found after Feb 21.")
